@@ -1,0 +1,5 @@
+opencron.db
+opencron.exe
+opencron.exe~
+*.exe
+*.db

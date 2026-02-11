@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Opencron</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f4f4f4; }
+        .form-group { margin-bottom: 1rem; }
+        label { display: block; margin-bottom: .5rem; }
+        input[type="text"] { width: 100%; padding: 8px; box-sizing: border-box; }
+        button { padding: 8px 16px; cursor: pointer; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
+        .modal-content { background: white; margin: 10% auto; padding: 20px; width: 50%; }
+        .close { float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Opencron Tasks</h1>
+    <button onclick="openModal()">Add Task</button>
+    <table id="taskTable">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Schedule</th>
+                <th>Command</th>
+                <th>Enabled</th>
+                <th>Last Run</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <div id="taskModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2 id="modalTitle">Add Task</h2>
+            <form id="taskForm">
+                <input type="hidden" id="taskId">
+                <div class="form-group">
+                    <label>Name</label>
+                    <input type="text" id="name" required>
+                </div>
+                <div class="form-group">
+                    <label>Schedule (Cron)</label>
+                    <input type="text" id="schedule" placeholder="* * * * *" required>
+                </div>
+                <div class="form-group">
+                    <label>Command</label>
+                    <input type="text" id="command" required>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="enabled"> Enabled
+                    </label>
+                </div>
+                <button type="submit">Save</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
