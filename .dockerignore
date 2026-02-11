@@ -1,0 +1,8 @@
+.git
+opencron.db
+opencron.exe
+*.exe
+*.db
+node_modules
+.vscode
+.idea
