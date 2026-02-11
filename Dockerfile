@@ -36,6 +36,6 @@ EXPOSE 8080
 ENV PORT=8080
 
 # Command to run the application
-# Note: The database 'opencron.db' will be created in /app. 
-# You should mount a volume here for persistence.
+# Note: The database 'opencron.db' and 'logs' directory will be created in /app. 
+# You should mount volumes for 'opencron.db' and 'logs' for persistence.
 CMD ["./opencron"]

@@ -2,7 +2,10 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -166,14 +169,39 @@ func (api *API) handleMCP(w http.ResponseWriter, r *http.Request) {
 
 func (api *API) handleTasks(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/"), "/")
+	// parts will be ["api", "tasks"] or ["api", "tasks", "ID"] or ["api", "tasks", "ID", "logs"]
+
 	switch r.Method {
 	case "GET":
-		tasks, err := api.Store.GetTasks()
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		if len(parts) == 2 {
+			tasks, err := api.Store.GetTasks()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			json.NewEncoder(w).Encode(tasks)
 			return
 		}
-		json.NewEncoder(w).Encode(tasks)
+
+		if len(parts) == 4 && parts[3] == "logs" {
+			id, _ := strconv.Atoi(parts[2])
+			logPath := filepath.Join("logs", fmt.Sprintf("task_%d.log", id))
+			content, err := os.ReadFile(logPath)
+			if err != nil {
+				if os.IsNotExist(err) {
+					w.Header().Set("Content-Type", "text/plain")
+					w.Write([]byte("No logs found for this task."))
+					return
+				}
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "text/plain")
+			w.Write(content)
+			return
+		}
 	case "POST":
 		var t models.Task
 		if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
@@ -188,12 +216,11 @@ func (api *API) handleTasks(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(t)
 	case "PUT":
 		// Quick parse ID from URL /api/tasks/ID
-		parts := strings.Split(r.URL.Path, "/")
-		if len(parts) < 4 {
+		if len(parts) < 3 {
 			http.Error(w, "Invalid ID", http.StatusBadRequest)
 			return
 		}
-		id, _ := strconv.Atoi(parts[3])
+		id, _ := strconv.Atoi(parts[2])
 		var t models.Task
 		if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -207,12 +234,11 @@ func (api *API) handleTasks(w http.ResponseWriter, r *http.Request) {
 		api.Engine.Reload()
 		json.NewEncoder(w).Encode(t)
 	case "DELETE":
-		parts := strings.Split(r.URL.Path, "/")
-		if len(parts) < 4 {
+		if len(parts) < 3 {
 			http.Error(w, "Invalid ID", http.StatusBadRequest)
 			return
 		}
-		id, _ := strconv.Atoi(parts[3])
+		id, _ := strconv.Atoi(parts[2])
 		if err := api.Store.DeleteTask(id); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

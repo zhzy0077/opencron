@@ -1,8 +1,11 @@
 package engine
 
 import (
+	"fmt"
 	"log"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -60,17 +63,37 @@ func (e *Engine) addTask(t models.Task) {
 		log.Printf("Running task %s: %s", t.Name, t.Command)
 		e.store.UpdateLastRun(t.ID, time.Now())
 
-		// Basic command execution (shell-like)
+		// Ensure logs directory exists
+		if err := os.MkdirAll("logs", 0755); err != nil {
+			log.Printf("Failed to create logs directory: %v", err)
+			return
+		}
+
+		logPath := filepath.Join("logs", fmt.Sprintf("task_%d.log", t.ID))
+		f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			log.Printf("Failed to open log file for task %s: %v", t.Name, err)
+			return
+		}
+		defer f.Close()
+
+		// Write a header for this run
+		fmt.Fprintf(f, "\n--- Task %s started at %s ---\n", t.Name, time.Now().Format(time.RFC3339))
+
 		parts := strings.Fields(t.Command)
 		if len(parts) == 0 {
 			return
 		}
 		cmd := exec.Command(parts[0], parts[1:]...)
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			log.Printf("Task %s failed: %v\nOutput: %s", t.Name, err, string(output))
+		cmd.Stdout = f
+		cmd.Stderr = f
+
+		if err := cmd.Run(); err != nil {
+			log.Printf("Task %s failed: %v", t.Name, err)
+			fmt.Fprintf(f, "--- Task %s failed: %v ---\n", t.Name, err)
 		} else {
-			log.Printf("Task %s finished.\nOutput: %s", t.Name, string(output))
+			log.Printf("Task %s finished.", t.Name)
+			fmt.Fprintf(f, "--- Task %s finished successfully ---\n", t.Name)
 		}
 	})
 

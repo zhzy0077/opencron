@@ -3,3 +3,4 @@ opencron.exe
 opencron.exe~
 *.exe
 *.db
+logs/

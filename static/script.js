@@ -17,11 +17,23 @@ async function loadTasks() {
             <td>${task.last_run ? new Date(task.last_run).toLocaleString() : 'Never'}</td>
             <td>
                 <button onclick="editTask(${task.id})">Edit</button>
+                <button onclick="showLogs(${task.id})">Logs</button>
                 <button onclick="deleteTask(${task.id})">Delete</button>
             </td>
         `;
         tbody.appendChild(tr);
     });
+}
+
+async function showLogs(id) {
+    const res = await fetch(`/api/tasks/${id}/logs`);
+    const logs = await res.text();
+    document.getElementById('logContent').innerText = logs;
+    document.getElementById('logModal').style.display = 'block';
+}
+
+function closeLogModal() {
+    document.getElementById('logModal').style.display = 'none';
 }
 
 function openModal(task) {
