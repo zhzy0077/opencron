@@ -20,13 +20,15 @@ type Engine struct {
 	store   *store.Store
 	entries map[int]cron.EntryID
 	mu      sync.Mutex
+	dataDir string
 }
 
-func New(s *store.Store) *Engine {
+func New(s *store.Store, dataDir string) *Engine {
 	return &Engine{
 		cron:    cron.New(),
 		store:   s,
 		entries: make(map[int]cron.EntryID),
+		dataDir: dataDir,
 	}
 }
 
@@ -63,13 +65,14 @@ func (e *Engine) addTask(t models.Task) {
 		log.Printf("Running task %s: %s", t.Name, t.Command)
 		e.store.UpdateLastRun(t.ID, time.Now())
 
+		logsDir := filepath.Join(e.dataDir, "logs")
 		// Ensure logs directory exists
-		if err := os.MkdirAll("logs", 0755); err != nil {
+		if err := os.MkdirAll(logsDir, 0755); err != nil {
 			log.Printf("Failed to create logs directory: %v", err)
 			return
 		}
 
-		logPath := filepath.Join("logs", fmt.Sprintf("task_%d.log", t.ID))
+		logPath := filepath.Join(logsDir, fmt.Sprintf("task_%d.log", t.ID))
 		f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			log.Printf("Failed to open log file for task %s: %v", t.Name, err)

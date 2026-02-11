@@ -15,11 +15,22 @@ import (
 )
 
 type API struct {
-	Store  *store.Store
-	Engine *engine.Engine
+	Store   *store.Store
+	Engine  *engine.Engine
+	DataDir string
 }
 
 func (api *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/mcp" {
+		apiKey := os.Getenv("API_KEY")
+		if apiKey != "" {
+			if r.Header.Get("X-API-Key") != apiKey {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+		}
+	}
+
 	if strings.HasPrefix(r.URL.Path, "/api/tasks") {
 		api.handleTasks(w, r)
 		return
@@ -187,7 +198,7 @@ func (api *API) handleTasks(w http.ResponseWriter, r *http.Request) {
 
 		if len(parts) == 4 && parts[3] == "logs" {
 			id, _ := strconv.Atoi(parts[2])
-			logPath := filepath.Join("logs", fmt.Sprintf("task_%d.log", id))
+			logPath := filepath.Join(api.DataDir, "logs", fmt.Sprintf("task_%d.log", id))
 			content, err := os.ReadFile(logPath)
 			if err != nil {
 				if os.IsNotExist(err) {
