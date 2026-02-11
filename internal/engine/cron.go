@@ -7,7 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
+	"runtime"
 	"sync"
 	"time"
 
@@ -113,13 +113,17 @@ func (e *Engine) runTask(t models.Task) (deleted bool, err error) {
 
 	fmt.Fprintf(f, "\n--- Task %s started at %s ---\n", t.Name, now.Format(time.RFC3339))
 
-	parts := strings.Fields(t.Command)
-	if len(parts) == 0 {
+	if t.Command == "" {
 		fmt.Fprintf(f, "--- Task %s failed: empty command ---\n", t.Name)
 		return false, fmt.Errorf("empty command")
 	}
 
-	cmd := exec.Command(parts[0], parts[1:]...)
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/C", t.Command)
+	} else {
+		cmd = exec.Command("sh", "-c", t.Command)
+	}
 	cmd.Stdout = f
 	cmd.Stderr = f
 	if err := cmd.Run(); err != nil {
