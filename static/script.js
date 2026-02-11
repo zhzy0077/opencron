@@ -1,7 +1,59 @@
-document.addEventListener('DOMContentLoaded', loadTasks);
+document.addEventListener('DOMContentLoaded', initializeUI);
+
+function getApiKey() {
+    return localStorage.getItem('opencron_api_key') || '';
+}
+
+function setStatus(message) {
+    const status = document.getElementById('statusMessage');
+    status.textContent = message || '';
+}
+
+async function apiFetch(url, options = {}) {
+    const headers = {
+        ...(options.headers || {})
+    };
+    const apiKey = getApiKey();
+    if (apiKey) {
+        headers['X-API-Key'] = apiKey;
+    }
+
+    const response = await fetch(url, { ...options, headers });
+    if (response.status === 401) {
+        setStatus('Unauthorized (401). Set a valid API Key.');
+    } else {
+        setStatus('');
+    }
+    return response;
+}
+
+function initializeUI() {
+    const apiKeyInput = document.getElementById('apiKey');
+    apiKeyInput.value = getApiKey();
+
+    document.getElementById('saveApiKeyBtn').addEventListener('click', () => {
+        localStorage.setItem('opencron_api_key', apiKeyInput.value.trim());
+        setStatus('API Key saved.');
+        loadTasks();
+    });
+
+    document.getElementById('clearApiKeyBtn').addEventListener('click', () => {
+        localStorage.removeItem('opencron_api_key');
+        apiKeyInput.value = '';
+        setStatus('API Key cleared.');
+        loadTasks();
+    });
+
+    loadTasks();
+}
 
 async function loadTasks() {
-    const res = await fetch('/api/tasks');
+    const res = await apiFetch('/api/tasks');
+    if (!res.ok) {
+        const tbody = document.querySelector('tbody');
+        tbody.innerHTML = '';
+        return;
+    }
     const tasks = await res.json();
     const tbody = document.querySelector('tbody');
     tbody.innerHTML = '';
@@ -26,7 +78,12 @@ async function loadTasks() {
 }
 
 async function showLogs(id) {
-    const res = await fetch(`/api/tasks/${id}/logs`);
+    const res = await apiFetch(`/api/tasks/${id}/logs`);
+    if (!res.ok) {
+        document.getElementById('logContent').innerText = `Failed to load logs (${res.status}).`;
+        document.getElementById('logModal').style.display = 'block';
+        return;
+    }
     const logs = await res.text();
     document.getElementById('logContent').innerText = logs;
     document.getElementById('logModal').style.display = 'block';
@@ -67,13 +124,13 @@ document.getElementById('taskForm').addEventListener('submit', async (e) => {
     };
 
     if (id) {
-        await fetch(`/api/tasks/${id}`, {
+        await apiFetch(`/api/tasks/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(task)
         });
     } else {
-        await fetch('/api/tasks', {
+        await apiFetch('/api/tasks', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(task)
@@ -85,7 +142,10 @@ document.getElementById('taskForm').addEventListener('submit', async (e) => {
 });
 
 async function editTask(id) {
-    const res = await fetch('/api/tasks');
+    const res = await apiFetch('/api/tasks');
+    if (!res.ok) {
+        return;
+    }
     const tasks = await res.json();
     const task = tasks.find(t => t.id === id);
     openModal(task);
@@ -93,7 +153,7 @@ async function editTask(id) {
 
 async function deleteTask(id) {
     if (confirm('Are you sure?')) {
-        await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
+        await apiFetch(`/api/tasks/${id}`, { method: 'DELETE' });
         loadTasks();
     }
 }

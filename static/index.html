@@ -9,6 +9,9 @@
         table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
         th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
         th { background-color: #f4f4f4; }
+        .toolbar { display: flex; gap: .5rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; }
+        .toolbar input[type="password"] { width: 260px; padding: 8px; box-sizing: border-box; }
+        .status { margin: .5rem 0; color: #b00020; min-height: 1.2rem; }
         .form-group { margin-bottom: 1rem; }
         label { display: block; margin-bottom: .5rem; }
         input[type="text"] { width: 100%; padding: 8px; box-sizing: border-box; }
@@ -20,7 +23,13 @@
 </head>
 <body>
     <h1>Opencron Tasks</h1>
-    <button onclick="openModal()">Add Task</button>
+    <div class="toolbar">
+        <button onclick="openModal()">Add Task</button>
+        <input type="password" id="apiKey" placeholder="API Key (optional)">
+        <button id="saveApiKeyBtn" type="button">Save API Key</button>
+        <button id="clearApiKeyBtn" type="button">Clear API Key</button>
+    </div>
+    <div id="statusMessage" class="status"></div>
     <table id="taskTable">
         <thead>
             <tr>
