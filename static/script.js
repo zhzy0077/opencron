@@ -66,6 +66,7 @@ async function loadTasks() {
             <td>${task.schedule}</td>
             <td>${task.command}</td>
             <td>${task.enabled ? 'Yes' : 'No'}</td>
+            <td>${task.one_shot ? 'Yes' : 'No'}</td>
             <td>${task.last_run ? new Date(task.last_run).toLocaleString() : 'Never'}</td>
             <td>
                 <button onclick="editTask(${task.id})">Edit</button>
@@ -101,10 +102,12 @@ function openModal(task) {
         document.getElementById('schedule').value = task.schedule;
         document.getElementById('command').value = task.command;
         document.getElementById('enabled').checked = task.enabled;
+        document.getElementById('one_shot').checked = task.one_shot;
         document.getElementById('modalTitle').innerText = 'Edit Task';
     } else {
         document.getElementById('taskForm').reset();
         document.getElementById('taskId').value = '';
+        document.getElementById('one_shot').checked = false;
         document.getElementById('modalTitle').innerText = 'Add Task';
     }
 }
@@ -120,7 +123,8 @@ document.getElementById('taskForm').addEventListener('submit', async (e) => {
         name: document.getElementById('name').value,
         schedule: document.getElementById('schedule').value,
         command: document.getElementById('command').value,
-        enabled: document.getElementById('enabled').checked
+        enabled: document.getElementById('enabled').checked,
+        one_shot: document.getElementById('one_shot').checked
     };
 
     if (id) {

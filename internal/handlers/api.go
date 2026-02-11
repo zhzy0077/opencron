@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -18,6 +19,36 @@ type API struct {
 	Store   *store.Store
 	Engine  *engine.Engine
 	DataDir string
+}
+
+type taskUpdateRequest struct {
+	Name     *string `json:"name"`
+	Schedule *string `json:"schedule"`
+	Command  *string `json:"command"`
+	Enabled  *bool   `json:"enabled"`
+	OneShot  *bool   `json:"one_shot"`
+}
+
+func (u taskUpdateRequest) isEmpty() bool {
+	return u.Name == nil && u.Schedule == nil && u.Command == nil && u.Enabled == nil && u.OneShot == nil
+}
+
+func applyTaskUpdate(t *models.Task, u taskUpdateRequest) {
+	if u.Name != nil {
+		t.Name = *u.Name
+	}
+	if u.Schedule != nil {
+		t.Schedule = *u.Schedule
+	}
+	if u.Command != nil {
+		t.Command = *u.Command
+	}
+	if u.Enabled != nil {
+		t.Enabled = *u.Enabled
+	}
+	if u.OneShot != nil {
+		t.OneShot = *u.OneShot
+	}
 }
 
 func (api *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -102,8 +133,25 @@ func (api *API) handleMCP(w http.ResponseWriter, r *http.Request) {
 						"schedule": map[string]interface{}{"type": "string", "description": "Standard cron expression (e.g. * * * * *)"},
 						"command":  map[string]interface{}{"type": "string"},
 						"enabled":  map[string]interface{}{"type": "boolean"},
+						"one_shot": map[string]interface{}{"type": "boolean"},
 					},
 					"required": []string{"name", "schedule", "command"},
+				},
+			},
+			{
+				"name":        "update_task",
+				"description": "Update a cron task by ID. Supports partial updates, including command changes.",
+				"inputSchema": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"id":       map[string]interface{}{"type": "integer"},
+						"name":     map[string]interface{}{"type": "string"},
+						"schedule": map[string]interface{}{"type": "string", "description": "Standard cron expression (e.g. * * * * *)"},
+						"command":  map[string]interface{}{"type": "string"},
+						"enabled":  map[string]interface{}{"type": "boolean"},
+						"one_shot": map[string]interface{}{"type": "boolean"},
+					},
+					"required": []string{"id"},
 				},
 			},
 			{
@@ -145,6 +193,9 @@ func (api *API) handleMCP(w http.ResponseWriter, r *http.Request) {
 			if val, ok := args["enabled"].(bool); ok {
 				t.Enabled = val
 			}
+			if val, ok := args["one_shot"].(bool); ok {
+				t.OneShot = val
+			}
 			err = api.Store.CreateTask(t)
 			api.Engine.Reload()
 			data, _ := json.Marshal(t)
@@ -154,6 +205,62 @@ func (api *API) handleMCP(w http.ResponseWriter, r *http.Request) {
 			err = api.Store.DeleteTask(id)
 			api.Engine.Reload()
 			content = append(content, map[string]interface{}{"type": "text", "text": "Task deleted successfully"})
+		case "update_task":
+			idValue, ok := args["id"]
+			if !ok {
+				err = fmt.Errorf("missing required field: id")
+				break
+			}
+
+			id, convErr := toInt(idValue)
+			if convErr != nil {
+				err = convErr
+				break
+			}
+
+			existing, getErr := api.Store.GetTaskByID(id)
+			if getErr != nil {
+				if getErr == sql.ErrNoRows {
+					err = fmt.Errorf("task %d not found", id)
+				} else {
+					err = getErr
+				}
+				break
+			}
+
+			updated := false
+			if val, ok := args["name"].(string); ok {
+				existing.Name = val
+				updated = true
+			}
+			if val, ok := args["schedule"].(string); ok {
+				existing.Schedule = val
+				updated = true
+			}
+			if val, ok := args["command"].(string); ok {
+				existing.Command = val
+				updated = true
+			}
+			if val, ok := args["enabled"].(bool); ok {
+				existing.Enabled = val
+				updated = true
+			}
+			if val, ok := args["one_shot"].(bool); ok {
+				existing.OneShot = val
+				updated = true
+			}
+			if !updated {
+				err = fmt.Errorf("at least one field to update is required")
+				break
+			}
+
+			err = api.Store.UpdateTask(existing)
+			if err != nil {
+				break
+			}
+			api.Engine.Reload()
+			data, _ := json.Marshal(existing)
+			content = append(content, map[string]interface{}{"type": "text", "text": "Task updated: " + string(data)})
 		default:
 			http.Error(w, "Unknown tool", http.StatusNotFound)
 			return
@@ -226,24 +333,46 @@ func (api *API) handleTasks(w http.ResponseWriter, r *http.Request) {
 		api.Engine.Reload()
 		json.NewEncoder(w).Encode(t)
 	case "PUT":
-		// Quick parse ID from URL /api/tasks/ID
+		fallthrough
+	case "PATCH":
+		// Parse ID from URL /api/tasks/ID
 		if len(parts) < 3 {
 			http.Error(w, "Invalid ID", http.StatusBadRequest)
 			return
 		}
-		id, _ := strconv.Atoi(parts[2])
-		var t models.Task
-		if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
+		id, err := strconv.Atoi(parts[2])
+		if err != nil {
+			http.Error(w, "Invalid ID", http.StatusBadRequest)
+			return
+		}
+
+		existing, err := api.Store.GetTaskByID(id)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				http.Error(w, "Task not found", http.StatusNotFound)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		var update taskUpdateRequest
+		if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		t.ID = id
-		if err := api.Store.UpdateTask(&t); err != nil {
+		if update.isEmpty() {
+			http.Error(w, "No fields to update", http.StatusBadRequest)
+			return
+		}
+
+		applyTaskUpdate(existing, update)
+		if err := api.Store.UpdateTask(existing); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		api.Engine.Reload()
-		json.NewEncoder(w).Encode(t)
+		json.NewEncoder(w).Encode(existing)
 	case "DELETE":
 		if len(parts) < 3 {
 			http.Error(w, "Invalid ID", http.StatusBadRequest)
@@ -256,5 +385,26 @@ func (api *API) handleTasks(w http.ResponseWriter, r *http.Request) {
 		}
 		api.Engine.Reload()
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func toInt(v interface{}) (int, error) {
+	switch n := v.(type) {
+	case int:
+		return n, nil
+	case int32:
+		return int(n), nil
+	case int64:
+		return int(n), nil
+	case float64:
+		return int(n), nil
+	case json.Number:
+		i, err := n.Int64()
+		if err != nil {
+			return 0, fmt.Errorf("invalid numeric id")
+		}
+		return int(i), nil
+	default:
+		return 0, fmt.Errorf("invalid id type")
 	}
 }

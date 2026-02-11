@@ -8,6 +8,7 @@ Opencron is a minimalist cron service written in Go. It provides a simple web UI
 - **API**: JSON API for programmatic access.
 - **Persistence**: Tasks are stored in a SQLite database (`opencron.db`).
 - **Cron Engine**: Reliable task scheduling using `robfig/cron`.
+- **One-shot Tasks**: Optional `one_shot` mode to auto-delete a task after its first run.
 
 ## Getting Started
 
@@ -28,8 +29,16 @@ Opencron is a minimalist cron service written in Go. It provides a simple web UI
 
 - `GET /api/tasks`: List all tasks.
 - `POST /api/tasks`: Create a new task.
-- `PUT /api/tasks/{id}`: Update a task.
+- `PUT /api/tasks/{id}`: Update a task (supports partial payloads).
+- `PATCH /api/tasks/{id}`: Partially update a task.
 - `DELETE /api/tasks/{id}`: Delete a task.
+
+## MCP Tools
+
+- `list_tasks`: List all tasks.
+- `create_task`: Create a task.
+- `update_task`: Update a task by `id` (supports partial updates, including `command`).
+- `delete_task`: Delete a task by `id`.
 
 ## License
 

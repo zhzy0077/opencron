@@ -98,6 +98,17 @@ func (e *Engine) addTask(t models.Task) {
 			log.Printf("Task %s finished.", t.Name)
 			fmt.Fprintf(f, "--- Task %s finished successfully ---\n", t.Name)
 		}
+
+		if t.OneShot {
+			if err := e.store.DeleteTask(t.ID); err != nil {
+				log.Printf("Failed to delete one-shot task %s (%d): %v", t.Name, t.ID, err)
+				fmt.Fprintf(f, "--- Failed to delete one-shot task: %v ---\n", err)
+				return
+			}
+			log.Printf("One-shot task %s (%d) deleted after first run.", t.Name, t.ID)
+			fmt.Fprintf(f, "--- One-shot task deleted after first run ---\n")
+			e.Reload()
+		}
 	})
 
 	if err != nil {
