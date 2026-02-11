@@ -22,8 +22,18 @@ FROM alpine:latest
 
 WORKDIR /app
 
-# Install runtime dependencies
-RUN apk --no-cache add ca-certificates tzdata
+# Install runtime dependencies and CLI tools
+RUN apk --no-cache add \
+    ca-certificates \
+    tzdata \
+    curl \
+    wget \
+    jq \
+    grep \
+    ripgrep \
+    sed \
+    gawk \
+    tar
 
 # Copy the binary and static files from the builder stage
 COPY --from=builder /app/opencron .
