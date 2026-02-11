@@ -32,6 +32,7 @@ Opencron is a minimalist cron service written in Go. It provides a simple web UI
 - `PUT /api/tasks/{id}`: Update a task (supports partial payloads).
 - `PATCH /api/tasks/{id}`: Partially update a task.
 - `DELETE /api/tasks/{id}`: Delete a task.
+- `POST /api/tasks/{id}/run`: Run a task immediately.
 
 ## MCP Tools
 
@@ -39,6 +40,7 @@ Opencron is a minimalist cron service written in Go. It provides a simple web UI
 - `create_task`: Create a task.
 - `update_task`: Update a task by `id` (supports partial updates, including `command`).
 - `delete_task`: Delete a task by `id`.
+- `run_task`: Run a task immediately by `id`.
 
 ## License
 

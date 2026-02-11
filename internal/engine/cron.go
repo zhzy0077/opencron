@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"os"
@@ -62,52 +63,8 @@ func (e *Engine) Reload() {
 
 func (e *Engine) addTask(t models.Task) {
 	entryID, err := e.cron.AddFunc(t.Schedule, func() {
-		log.Printf("Running task %s: %s", t.Name, t.Command)
-		e.store.UpdateLastRun(t.ID, time.Now())
-
-		logsDir := filepath.Join(e.dataDir, "logs")
-		// Ensure logs directory exists
-		if err := os.MkdirAll(logsDir, 0755); err != nil {
-			log.Printf("Failed to create logs directory: %v", err)
-			return
-		}
-
-		logPath := filepath.Join(logsDir, fmt.Sprintf("task_%d.log", t.ID))
-		f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			log.Printf("Failed to open log file for task %s: %v", t.Name, err)
-			return
-		}
-		defer f.Close()
-
-		// Write a header for this run
-		fmt.Fprintf(f, "\n--- Task %s started at %s ---\n", t.Name, time.Now().Format(time.RFC3339))
-
-		parts := strings.Fields(t.Command)
-		if len(parts) == 0 {
-			return
-		}
-		cmd := exec.Command(parts[0], parts[1:]...)
-		cmd.Stdout = f
-		cmd.Stderr = f
-
-		if err := cmd.Run(); err != nil {
+		if _, err := e.runTask(t); err != nil {
 			log.Printf("Task %s failed: %v", t.Name, err)
-			fmt.Fprintf(f, "--- Task %s failed: %v ---\n", t.Name, err)
-		} else {
-			log.Printf("Task %s finished.", t.Name)
-			fmt.Fprintf(f, "--- Task %s finished successfully ---\n", t.Name)
-		}
-
-		if t.OneShot {
-			if err := e.store.DeleteTask(t.ID); err != nil {
-				log.Printf("Failed to delete one-shot task %s (%d): %v", t.Name, t.ID, err)
-				fmt.Fprintf(f, "--- Failed to delete one-shot task: %v ---\n", err)
-				return
-			}
-			log.Printf("One-shot task %s (%d) deleted after first run.", t.Name, t.ID)
-			fmt.Fprintf(f, "--- One-shot task deleted after first run ---\n")
-			e.Reload()
 		}
 	})
 
@@ -120,4 +77,69 @@ func (e *Engine) addTask(t models.Task) {
 
 func (e *Engine) RefreshTask(taskID int) {
 	e.Reload() // Simplistic approach: reload all on change for now
+}
+
+func (e *Engine) RunTaskNow(taskID int) error {
+	t, err := e.store.GetTaskByID(taskID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("task %d not found: %w", taskID, sql.ErrNoRows)
+		}
+		return err
+	}
+
+	_, err = e.runTask(*t)
+	return err
+}
+
+func (e *Engine) runTask(t models.Task) (deleted bool, err error) {
+	log.Printf("Running task %s: %s", t.Name, t.Command)
+	now := time.Now()
+	if err := e.store.UpdateLastRun(t.ID, now); err != nil {
+		log.Printf("Failed to update last_run for task %s (%d): %v", t.Name, t.ID, err)
+	}
+
+	logsDir := filepath.Join(e.dataDir, "logs")
+	if err := os.MkdirAll(logsDir, 0755); err != nil {
+		return false, fmt.Errorf("failed to create logs directory: %w", err)
+	}
+
+	logPath := filepath.Join(logsDir, fmt.Sprintf("task_%d.log", t.ID))
+	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return false, fmt.Errorf("failed to open log file: %w", err)
+	}
+	defer f.Close()
+
+	fmt.Fprintf(f, "\n--- Task %s started at %s ---\n", t.Name, now.Format(time.RFC3339))
+
+	parts := strings.Fields(t.Command)
+	if len(parts) == 0 {
+		fmt.Fprintf(f, "--- Task %s failed: empty command ---\n", t.Name)
+		return false, fmt.Errorf("empty command")
+	}
+
+	cmd := exec.Command(parts[0], parts[1:]...)
+	cmd.Stdout = f
+	cmd.Stderr = f
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(f, "--- Task %s failed: %v ---\n", t.Name, err)
+		return false, err
+	}
+
+	log.Printf("Task %s finished.", t.Name)
+	fmt.Fprintf(f, "--- Task %s finished successfully ---\n", t.Name)
+
+	if t.OneShot {
+		if err := e.store.DeleteTask(t.ID); err != nil {
+			fmt.Fprintf(f, "--- Failed to delete one-shot task: %v ---\n", err)
+			return false, fmt.Errorf("failed to delete one-shot task: %w", err)
+		}
+		log.Printf("One-shot task %s (%d) deleted after first run.", t.Name, t.ID)
+		fmt.Fprintf(f, "--- One-shot task deleted after first run ---\n")
+		e.Reload()
+		return true, nil
+	}
+
+	return false, nil
 }

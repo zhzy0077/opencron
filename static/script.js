@@ -69,6 +69,7 @@ async function loadTasks() {
             <td>${task.one_shot ? 'Yes' : 'No'}</td>
             <td>${task.last_run ? new Date(task.last_run).toLocaleString() : 'Never'}</td>
             <td>
+                <button onclick="runTask(${task.id})">Run</button>
                 <button onclick="editTask(${task.id})">Edit</button>
                 <button onclick="showLogs(${task.id})">Logs</button>
                 <button onclick="deleteTask(${task.id})">Delete</button>
@@ -160,4 +161,14 @@ async function deleteTask(id) {
         await apiFetch(`/api/tasks/${id}`, { method: 'DELETE' });
         loadTasks();
     }
+}
+
+async function runTask(id) {
+    const res = await apiFetch(`/api/tasks/${id}/run`, { method: 'POST' });
+    if (!res.ok) {
+        setStatus(`Failed to run task ${id} (${res.status}).`);
+        return;
+    }
+    setStatus(`Task ${id} triggered.`);
+    await loadTasks();
 }

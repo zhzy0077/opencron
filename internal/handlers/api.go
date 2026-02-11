@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -165,6 +166,17 @@ func (api *API) handleMCP(w http.ResponseWriter, r *http.Request) {
 					"required": []string{"id"},
 				},
 			},
+			{
+				"name":        "run_task",
+				"description": "Run a task immediately by ID",
+				"inputSchema": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"id": map[string]interface{}{"type": "integer"},
+					},
+					"required": []string{"id"},
+				},
+			},
 		}
 		sendResponse(map[string]interface{}{"tools": tools})
 
@@ -205,6 +217,22 @@ func (api *API) handleMCP(w http.ResponseWriter, r *http.Request) {
 			err = api.Store.DeleteTask(id)
 			api.Engine.Reload()
 			content = append(content, map[string]interface{}{"type": "text", "text": "Task deleted successfully"})
+		case "run_task":
+			idValue, ok := args["id"]
+			if !ok {
+				err = fmt.Errorf("missing required field: id")
+				break
+			}
+			id, convErr := toInt(idValue)
+			if convErr != nil {
+				err = convErr
+				break
+			}
+			err = api.Engine.RunTaskNow(id)
+			if err != nil {
+				break
+			}
+			content = append(content, map[string]interface{}{"type": "text", "text": fmt.Sprintf("Task %d executed", id)})
 		case "update_task":
 			idValue, ok := args["id"]
 			if !ok {
@@ -289,7 +317,7 @@ func (api *API) handleTasks(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/"), "/")
-	// parts will be ["api", "tasks"] or ["api", "tasks", "ID"] or ["api", "tasks", "ID", "logs"]
+	// parts will be ["api", "tasks"], ["api", "tasks", "ID"], ["api", "tasks", "ID", "logs"], or ["api", "tasks", "ID", "run"]
 
 	switch r.Method {
 	case "GET":
@@ -321,6 +349,24 @@ func (api *API) handleTasks(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	case "POST":
+		if len(parts) == 4 && parts[3] == "run" {
+			id, err := strconv.Atoi(parts[2])
+			if err != nil {
+				http.Error(w, "Invalid ID", http.StatusBadRequest)
+				return
+			}
+			if err := api.Engine.RunTaskNow(id); err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					http.Error(w, "Task not found", http.StatusNotFound)
+					return
+				}
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
 		var t models.Task
 		if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/opencron/opencron/internal/engine"
@@ -47,6 +48,13 @@ func seedTask(t *testing.T, api *API) models.Task {
 		t.Fatalf("failed to create task: %v", err)
 	}
 	return task
+}
+
+func runnableCommand() string {
+	if runtime.GOOS == "windows" {
+		return "cmd /c echo opencron"
+	}
+	return "echo opencron"
 }
 
 func TestUpdateTaskCommandViaAPI(t *testing.T) {
@@ -113,5 +121,72 @@ func TestUpdateTaskCommandViaMCP(t *testing.T) {
 	}
 	if updated.Command != "echo mcp" {
 		t.Fatalf("expected command to be updated by MCP, got %q", updated.Command)
+	}
+}
+
+func TestRunTaskNowViaAPI(t *testing.T) {
+	api := newTestAPI(t)
+	task := seedTask(t, api)
+	task.Command = runnableCommand()
+	if err := api.Store.UpdateTask(&task); err != nil {
+		t.Fatalf("failed to update task command: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/tasks/%d/run", task.ID), nil)
+	rec := httptest.NewRecorder()
+
+	api.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected status 204, got %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	updated, err := api.Store.GetTaskByID(task.ID)
+	if err != nil {
+		t.Fatalf("failed to read updated task: %v", err)
+	}
+	if updated.LastRun.IsZero() {
+		t.Fatalf("expected last_run to be updated")
+	}
+}
+
+func TestRunTaskViaMCP(t *testing.T) {
+	api := newTestAPI(t)
+	task := seedTask(t, api)
+	task.Command = runnableCommand()
+	if err := api.Store.UpdateTask(&task); err != nil {
+		t.Fatalf("failed to update task command: %v", err)
+	}
+
+	payload := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]interface{}{
+			"name": "run_task",
+			"arguments": map[string]interface{}{
+				"id": task.ID,
+			},
+		},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("failed to marshal payload: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	api.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	updated, err := api.Store.GetTaskByID(task.ID)
+	if err != nil {
+		t.Fatalf("failed to read updated task: %v", err)
+	}
+	if updated.LastRun.IsZero() {
+		t.Fatalf("expected last_run to be updated by MCP run_task")
 	}
 }
