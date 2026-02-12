@@ -17,25 +17,71 @@ import (
 )
 
 type Engine struct {
-	cron    *cron.Cron
-	store   *store.Store
-	entries map[int]cron.EntryID
-	mu      sync.Mutex
-	dataDir string
+	cron         *cron.Cron
+	store        *store.Store
+	entries      map[int]cron.EntryID
+	mu           sync.Mutex
+	dataDir      string
+	LogRetention time.Duration
 }
 
-func New(s *store.Store, dataDir string) *Engine {
+func New(s *store.Store, dataDir string, retention time.Duration) *Engine {
 	return &Engine{
-		cron:    cron.New(),
-		store:   s,
-		entries: make(map[int]cron.EntryID),
-		dataDir: dataDir,
+		cron:         cron.New(),
+		store:        s,
+		entries:      make(map[int]cron.EntryID),
+		dataDir:      dataDir,
+		LogRetention: retention,
 	}
 }
 
 func (e *Engine) Start() {
 	e.cron.Start()
 	e.Reload()
+	e.StartLogJanitor()
+}
+
+func (e *Engine) StartLogJanitor() {
+	// Run log cleanup every hour
+	_, _ = e.cron.AddFunc("@hourly", func() {
+		e.PurgeOldLogs()
+	})
+	// Run once at start
+	go e.PurgeOldLogs()
+}
+
+func (e *Engine) PurgeOldLogs() {
+	logsDir := filepath.Join(e.dataDir, "logs")
+	entries, err := os.ReadDir(logsDir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Printf("Failed to read logs directory: %v", err)
+		}
+		return
+	}
+
+	cutoff := time.Now().Add(-e.LogRetention)
+	purgedCount := 0
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+
+		if info.ModTime().Before(cutoff) {
+			if err := os.Remove(filepath.Join(logsDir, entry.Name())); err == nil {
+				purgedCount++
+			}
+		}
+	}
+
+	if purgedCount > 0 {
+		log.Printf("Purged %d old log files.", purgedCount)
+	}
 }
 
 func (e *Engine) Reload() {
@@ -104,7 +150,7 @@ func (e *Engine) runTask(t models.Task) (deleted bool, err error) {
 		return false, fmt.Errorf("failed to create logs directory: %w", err)
 	}
 
-	logPath := filepath.Join(logsDir, fmt.Sprintf("task_%d.log", t.ID))
+	logPath := filepath.Join(logsDir, fmt.Sprintf("task_%d_%s.log", t.ID, now.Format("20060102")))
 	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return false, fmt.Errorf("failed to open log file: %w", err)

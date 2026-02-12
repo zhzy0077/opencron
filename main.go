@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/opencron/opencron/internal/engine"
@@ -31,7 +33,15 @@ func main() {
 		log.Fatalf("Failed to initialize store: %v", err)
 	}
 
-	e := engine.New(s, dataDir)
+	retentionHours := 48
+	if val := os.Getenv("LOG_RETENTION_HOURS"); val != "" {
+		if h, err := strconv.Atoi(val); err == nil {
+			retentionHours = h
+		}
+	}
+	retention := time.Duration(retentionHours) * time.Hour
+
+	e := engine.New(s, dataDir, retention)
 	e.Start()
 
 	api := &handlers.API{

@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/opencron/opencron/internal/engine"
 	"github.com/opencron/opencron/internal/models"
@@ -24,7 +26,7 @@ func newTestAPI(t *testing.T) *API {
 		t.Fatalf("failed to create store: %v", err)
 	}
 
-	e := engine.New(s, dataDir)
+	e := engine.New(s, dataDir, 48*time.Hour)
 	t.Cleanup(func() {
 		_ = s.Close()
 	})
@@ -188,5 +190,39 @@ func TestRunTaskViaMCP(t *testing.T) {
 	}
 	if updated.LastRun.IsZero() {
 		t.Fatalf("expected last_run to be updated by MCP run_task")
+	}
+}
+
+func TestGetLogsAPI(t *testing.T) {
+	api := newTestAPI(t)
+	task := seedTask(t, api)
+
+	logsDir := filepath.Join(api.DataDir, "logs")
+	if err := os.MkdirAll(logsDir, 0755); err != nil {
+		t.Fatalf("failed to create logs dir: %v", err)
+	}
+
+	// Create a legacy log and a daily log
+	legacyLog := filepath.Join(logsDir, fmt.Sprintf("task_%d.log", task.ID))
+	dailyLog := filepath.Join(logsDir, fmt.Sprintf("task_%d_20260212.log", task.ID))
+
+	if err := os.WriteFile(legacyLog, []byte("legacy content\n"), 0644); err != nil {
+		t.Fatalf("failed to write legacy log: %v", err)
+	}
+	if err := os.WriteFile(dailyLog, []byte("daily content\n"), 0644); err != nil {
+		t.Fatalf("failed to write daily log: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/tasks/%d/logs", task.ID), nil)
+	rec := httptest.NewRecorder()
+
+	api.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	expected := "legacy content\ndaily content\n"
+	if rec.Body.String() != expected {
+		t.Fatalf("expected concatenated logs %q, got %q", expected, rec.Body.String())
 	}
 }

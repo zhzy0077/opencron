@@ -333,19 +333,40 @@ func (api *API) handleTasks(w http.ResponseWriter, r *http.Request) {
 
 		if len(parts) == 4 && parts[3] == "logs" {
 			id, _ := strconv.Atoi(parts[2])
-			logPath := filepath.Join(api.DataDir, "logs", fmt.Sprintf("task_%d.log", id))
-			content, err := os.ReadFile(logPath)
-			if err != nil {
-				if os.IsNotExist(err) {
-					w.Header().Set("Content-Type", "text/plain")
-					w.Write([]byte("No logs found for this task."))
-					return
-				}
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+			logsDir := filepath.Join(api.DataDir, "logs")
+
+			// Pattern to match legacy task_ID.log and daily task_ID_YYYYMMDD.log
+			// We use two patterns to be precise and avoid matching task_10 when id is 1
+			legacyPath := filepath.Join(logsDir, fmt.Sprintf("task_%d.log", id))
+			dailyPattern := filepath.Join(logsDir, fmt.Sprintf("task_%d_*.log", id))
+			
+			matches, _ := filepath.Glob(dailyPattern)
+			if _, err := os.Stat(legacyPath); err == nil {
+				matches = append([]string{legacyPath}, matches...)
+			}
+
+			if len(matches) == 0 {
+				w.Header().Set("Content-Type", "text/plain")
+				w.Write([]byte("No logs found for this task."))
 				return
 			}
+
+			// Sort matches to ensure order (lexicographical should work for task_ID_YYYYMMDD.log)
+			// task_ID.log (if it exists) will come before task_ID_YYYYMMDD.log because . comes before _
+			// Actually _ comes after . in ASCII? Let's check: '.' is 46, '_' is 95.
+			// So task_1.log will be before task_1_20260212.log.
+
+			var sb strings.Builder
+			for _, match := range matches {
+				content, err := os.ReadFile(match)
+				if err != nil {
+					continue
+				}
+				sb.Write(content)
+			}
+
 			w.Header().Set("Content-Type", "text/plain")
-			w.Write(content)
+			w.Write([]byte(sb.String()))
 			return
 		}
 	case "POST":
