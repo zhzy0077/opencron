@@ -339,7 +339,7 @@ func (api *API) handleTasks(w http.ResponseWriter, r *http.Request) {
 			// We use two patterns to be precise and avoid matching task_10 when id is 1
 			legacyPath := filepath.Join(logsDir, fmt.Sprintf("task_%d.log", id))
 			dailyPattern := filepath.Join(logsDir, fmt.Sprintf("task_%d_*.log", id))
-			
+
 			matches, _ := filepath.Glob(dailyPattern)
 			if _, err := os.Stat(legacyPath); err == nil {
 				matches = append([]string{legacyPath}, matches...)

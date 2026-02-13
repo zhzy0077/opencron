@@ -70,6 +70,7 @@ async function loadTasks() {
             <td>${task.last_run ? new Date(task.last_run).toLocaleString() : 'Never'}</td>
             <td>
                 <button onclick="runTask(${task.id})">Run</button>
+                <button onclick="toggleTask(${task.id}, ${!task.enabled})">${task.enabled ? 'Disable' : 'Enable'}</button>
                 <button onclick="editTask(${task.id})">Edit</button>
                 <button onclick="showLogs(${task.id})">Logs</button>
                 <button onclick="deleteTask(${task.id})">Delete</button>
@@ -170,5 +171,19 @@ async function runTask(id) {
         return;
     }
     setStatus(`Task ${id} triggered.`);
+    await loadTasks();
+}
+
+async function toggleTask(id, enabled) {
+    const res = await apiFetch(`/api/tasks/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled })
+    });
+    if (!res.ok) {
+        setStatus(`Failed to ${enabled ? 'enable' : 'disable'} task ${id} (${res.status}).`);
+        return;
+    }
+    setStatus(`Task ${id} ${enabled ? 'enabled' : 'disabled'}.`);
     await loadTasks();
 }
